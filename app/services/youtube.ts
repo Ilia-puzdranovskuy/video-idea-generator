@@ -1,8 +1,9 @@
 import { google } from 'googleapis';
 import { YouTubeVideo } from '../types';
+import { YOUTUBE_CONFIG } from '../utils/constants';
 
 const youtube = google.youtube({
-  version: 'v3',
+  version: YOUTUBE_CONFIG.API_VERSION,
   auth: process.env.YOUTUBE_API_KEY,
 });
 
@@ -10,11 +11,13 @@ function parseDurationToSeconds(isoDuration: string): number {
   const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!match) return 0;
   
-  const hours = parseInt(match[1] || '0');
-  const minutes = parseInt(match[2] || '0');
-  const seconds = parseInt(match[3] || '0');
+  const hours = parseInt(match[1] || YOUTUBE_CONFIG.DEFAULTS.VIEW_COUNT);
+  const minutes = parseInt(match[2] || YOUTUBE_CONFIG.DEFAULTS.VIEW_COUNT);
+  const seconds = parseInt(match[3] || YOUTUBE_CONFIG.DEFAULTS.VIEW_COUNT);
   
-  return hours * 3600 + minutes * 60 + seconds;
+  return hours * YOUTUBE_CONFIG.DURATION.SECONDS_IN_HOUR + 
+         minutes * YOUTUBE_CONFIG.DURATION.SECONDS_IN_MINUTE + 
+         seconds;
 }
 
 export async function getChannelIdFromUrl(channelUrl: string): Promise<string> {
@@ -22,9 +25,11 @@ export async function getChannelIdFromUrl(channelUrl: string): Promise<string> {
   let channelId = '';
   
   try {
-    if (channelUrl.includes('/@')) {
-      // Handle @username format
-      const username = channelUrl.split('/@')[1].split('/')[0].split('?')[0];
+    if (channelUrl.includes(YOUTUBE_CONFIG.URL_PATTERNS.USERNAME)) {
+      const username = channelUrl
+        .split(YOUTUBE_CONFIG.URL_PATTERNS.USERNAME)[1]
+        .split('/')[0]
+        .split('?')[0];
       const response = await youtube.search.list({
         part: ['id'],
         q: username,
@@ -35,12 +40,16 @@ export async function getChannelIdFromUrl(channelUrl: string): Promise<string> {
       if (response.data.items && response.data.items.length > 0) {
         channelId = response.data.items[0].id?.channelId || '';
       }
-    } else if (channelUrl.includes('/channel/')) {
-      // Direct channel ID
-      channelId = channelUrl.split('/channel/')[1].split('/')[0].split('?')[0];
-    } else if (channelUrl.includes('/c/')) {
-      // Custom URL format
-      const customUrl = channelUrl.split('/c/')[1].split('/')[0].split('?')[0];
+    } else if (channelUrl.includes(YOUTUBE_CONFIG.URL_PATTERNS.CHANNEL)) {
+      channelId = channelUrl
+        .split(YOUTUBE_CONFIG.URL_PATTERNS.CHANNEL)[1]
+        .split('/')[0]
+        .split('?')[0];
+    } else if (channelUrl.includes(YOUTUBE_CONFIG.URL_PATTERNS.CUSTOM)) {
+      const customUrl = channelUrl
+        .split(YOUTUBE_CONFIG.URL_PATTERNS.CUSTOM)[1]
+        .split('/')[0]
+        .split('?')[0];
       const response = await youtube.search.list({
         part: ['id'],
         q: customUrl,
@@ -51,9 +60,11 @@ export async function getChannelIdFromUrl(channelUrl: string): Promise<string> {
       if (response.data.items && response.data.items.length > 0) {
         channelId = response.data.items[0].id?.channelId || '';
       }
-    } else if (channelUrl.includes('/user/')) {
-      // Legacy username format
-      const username = channelUrl.split('/user/')[1].split('/')[0].split('?')[0];
+    } else if (channelUrl.includes(YOUTUBE_CONFIG.URL_PATTERNS.USER)) {
+      const username = channelUrl
+        .split(YOUTUBE_CONFIG.URL_PATTERNS.USER)[1]
+        .split('/')[0]
+        .split('?')[0];
       const response = await youtube.channels.list({
         part: ['id'],
         forUsername: username,
@@ -92,8 +103,10 @@ export async function getLatestVideos(channelId: string, maxResults = 10): Promi
       throw new Error('Could not find uploads playlist');
     }
     
-    // Fetch more videos to account for Shorts filtering
-    const fetchLimit = Math.min(maxResults * 3, 50);
+    const fetchLimit = Math.min(
+      maxResults * YOUTUBE_CONFIG.FETCH.MULTIPLIER, 
+      YOUTUBE_CONFIG.FETCH.MAX_RESULTS
+    );
     
     const playlistResponse = await youtube.playlistItems.list({
       part: ['snippet', 'contentDetails'],
@@ -119,14 +132,12 @@ export async function getLatestVideos(channelId: string, maxResults = 10): Promi
       return [];
     }
     
-    // Filter out Shorts (videos 60 seconds or less)
     const regularVideos = videosResponse.data.items.filter(item => {
       const duration = item.contentDetails?.duration || '';
       const durationSeconds = parseDurationToSeconds(duration);
-      return durationSeconds > 60;
+      return durationSeconds > YOUTUBE_CONFIG.DURATION.SHORTS_MAX_SECONDS;
     });
     
-    // Map to YouTubeVideo type and limit to requested amount
     const videos: YouTubeVideo[] = regularVideos
       .slice(0, maxResults)
       .map(item => ({
@@ -135,8 +146,8 @@ export async function getLatestVideos(channelId: string, maxResults = 10): Promi
         description: item.snippet?.description || '',
         thumbnailUrl: item.snippet?.thumbnails?.high?.url || '',
         publishedAt: item.snippet?.publishedAt || '',
-        viewCount: item.statistics?.viewCount || '0',
-        likeCount: item.statistics?.likeCount || '0',
+        viewCount: item.statistics?.viewCount || YOUTUBE_CONFIG.DEFAULTS.VIEW_COUNT,
+        likeCount: item.statistics?.likeCount || YOUTUBE_CONFIG.DEFAULTS.LIKE_COUNT,
         tags: item.snippet?.tags || [],
       }));
     

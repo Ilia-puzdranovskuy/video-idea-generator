@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { YouTubeVideo, ChannelAnalysis, SearchQueries, VideoIdea } from '../types';
 import { SYSTEM_PROMPTS, USER_PROMPTS, DEFAULTS } from '../config/prompts';
+import { OPENAI_CONFIG, ANALYSIS_CONFIG } from '../utils/constants';
 import {
   getCurrentDateInfo,
   validateVideoIdeas,
@@ -8,12 +9,17 @@ import {
   extractTopicsString
 } from '../utils/openai-helpers';
 
+// OPENAI CLIENT
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// THUMBNAIL ANALYSIS
 async function analyzeThumbnailStyle(videos: YouTubeVideo[]): Promise<string> {
-  const thumbnailUrls = videos.slice(0, 5).map(v => v.thumbnailUrl).filter(url => url);
+  const thumbnailUrls = videos
+    .slice(0, ANALYSIS_CONFIG.THUMBNAILS.ANALYSIS_COUNT)
+    .map(v => v.thumbnailUrl)
+    .filter(url => url);
 
   if (thumbnailUrls.length === 0) {
     return DEFAULTS.THUMBNAIL_STYLE;
@@ -21,7 +27,7 @@ async function analyzeThumbnailStyle(videos: YouTubeVideo[]): Promise<string> {
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: OPENAI_CONFIG.MODELS.GPT_4O,
       messages: [
         {
           role: 'system',
@@ -36,13 +42,13 @@ async function analyzeThumbnailStyle(videos: YouTubeVideo[]): Promise<string> {
             },
             ...thumbnailUrls.map(url => ({
               type: 'image_url' as const,
-              image_url: { url, detail: 'high' as const },
+              image_url: { url, detail: OPENAI_CONFIG.IMAGE.DETAIL as const },
             })),
           ],
         },
       ],
-      max_tokens: 3000,
-      temperature: 0.2,
+      max_tokens: OPENAI_CONFIG.MAX_TOKENS.THUMBNAIL_ANALYSIS,
+      temperature: OPENAI_CONFIG.TEMPERATURE.LOW,
     });
 
     const styleAnalysis = response.choices[0].message.content || DEFAULTS.THUMBNAIL_STYLE;
@@ -54,12 +60,13 @@ async function analyzeThumbnailStyle(videos: YouTubeVideo[]): Promise<string> {
   }
 }
 
+// CHANNEL CONTENT ANALYSIS
 export async function analyzeChannelContent(videos: YouTubeVideo[]): Promise<ChannelAnalysis> {
   const thumbnailStyle = await analyzeThumbnailStyle(videos);
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: OPENAI_CONFIG.MODELS.GPT_4O,
       messages: [
         {
           role: 'system',
@@ -70,7 +77,7 @@ export async function analyzeChannelContent(videos: YouTubeVideo[]): Promise<Cha
           content: USER_PROMPTS.ANALYZE_CHANNEL(videos),
         },
       ],
-      temperature: 0.7,
+      temperature: OPENAI_CONFIG.TEMPERATURE.MEDIUM,
       response_format: { type: 'json_object' },
     });
 
@@ -97,13 +104,14 @@ export async function analyzeChannelContent(videos: YouTubeVideo[]): Promise<Cha
   }
 }
 
+// SEARCH QUERIES GENERATION
 export async function generateSearchQueries(analysis: ChannelAnalysis): Promise<SearchQueries> {
   const topics = extractTopicsString(analysis.topics);
   const { currentYear, currentMonth, currentDate } = getCurrentDateInfo();
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: OPENAI_CONFIG.MODELS.GPT_4O_MINI,
       messages: [
         {
           role: 'system',
@@ -121,7 +129,7 @@ export async function generateSearchQueries(analysis: ChannelAnalysis): Promise<
           ),
         },
       ],
-      temperature: 0.8,
+      temperature: OPENAI_CONFIG.TEMPERATURE.HIGH,
       response_format: { type: 'json_object' },
     });
 
@@ -148,6 +156,7 @@ export async function generateSearchQueries(analysis: ChannelAnalysis): Promise<
   }
 }
 
+// VIDEO IDEAS GENERATION
 export async function generateVideoIdeas(
   analysis: ChannelAnalysis,
   videos: YouTubeVideo[],
@@ -158,7 +167,7 @@ export async function generateVideoIdeas(
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: OPENAI_CONFIG.MODELS.GPT_4O,
       messages: [
         {
           role: 'system',
@@ -179,7 +188,7 @@ export async function generateVideoIdeas(
           ),
         },
       ],
-      temperature: 0.9,
+      temperature: OPENAI_CONFIG.TEMPERATURE.CREATIVE,
       response_format: { type: 'json_object' },
     });
 
@@ -196,13 +205,14 @@ export async function generateVideoIdeas(
 
     const validatedIdeas = validateVideoIdeas(result.ideas);
 
-    return validatedIdeas.slice(0, 5);
+    return validatedIdeas.slice(0, ANALYSIS_CONFIG.VIDEO_IDEAS.MAX_COUNT);
   } catch (error) {
     console.error('Error generating video ideas:', error);
     throw new Error('Failed to generate video ideas');
   }
 }
 
+// THUMBNAIL GENERATION
 export async function generateThumbnail(
   thumbnailIdea: string, 
   channelStyle: string
@@ -211,12 +221,12 @@ export async function generateThumbnail(
     const finalPrompt = USER_PROMPTS.GENERATE_THUMBNAIL(channelStyle, thumbnailIdea);
 
     const response = await openai.images.generate({
-      model: 'dall-e-3',
+      model: OPENAI_CONFIG.MODELS.DALLE_3,
       prompt: finalPrompt,
       n: 1,
-      size: '1792x1024',
-      quality: 'hd',
-      style: 'natural',
+      size: OPENAI_CONFIG.IMAGE.SIZE,
+      quality: OPENAI_CONFIG.IMAGE.QUALITY,
+      style: OPENAI_CONFIG.IMAGE.STYLE,
     });
 
     if (!response.data || !response.data[0]?.url) {

@@ -1,5 +1,10 @@
 import axios from 'axios';
 import { RedditPost } from '../types';
+import { REDDIT_CONFIG } from '../utils/constants';
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 interface RedditPostData {
   title: string;
@@ -24,38 +29,40 @@ export async function searchReddit(queries: string[]): Promise<RedditPost[]> {
   const allPosts: RedditPost[] = [];
 
   try {
-    const promises = queries.map(async (query) => {
+    for (let i = 0; i < queries.length; i++) {
+      const query = queries[i];
+      
       try {
-        const searchUrl = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=relevance&limit=10&t=week`;
+        const searchUrl = `${REDDIT_CONFIG.SEARCH_URL}?q=${encodeURIComponent(query)}&sort=${REDDIT_CONFIG.SORT_BY}&limit=${REDDIT_CONFIG.SEARCH_LIMIT}&t=${REDDIT_CONFIG.TIME_RANGE}`;
         
         const response = await axios.get<RedditResponse>(searchUrl, {
           headers: {
-            'User-Agent': 'VideoIdeaGenerator/1.0',
+            'User-Agent': REDDIT_CONFIG.USER_AGENT,
           },
         });
 
         if (response.data?.data?.children) {
-          return response.data.data.children.map((child: RedditChild) => {
+          const posts = response.data.data.children.map((child: RedditChild) => {
             const post = child.data;
             return {
               title: post.title,
               content: post.selftext || '',
-              url: `https://www.reddit.com${post.permalink}`,
+              url: `${REDDIT_CONFIG.BASE_URL}${post.permalink}`,
               subreddit: post.subreddit,
               score: post.score,
-              createdAt: new Date(post.created_utc * 1000).toISOString(),
+              createdAt: new Date(post.created_utc * REDDIT_CONFIG.UNIX_TO_MS).toISOString(),
             };
           });
+          allPosts.push(...posts);
         }
-        return [];
+        
+        if (i < queries.length - 1) {
+          await delay(REDDIT_CONFIG.DELAY_BETWEEN_REQUESTS_MS);
+        }
       } catch (error) {
         console.error('Error fetching Reddit posts for query:', error);
-        return [];
       }
-    });
-
-    const results = await Promise.all(promises);
-    results.forEach(posts => allPosts.push(...posts));
+    }
 
     const uniquePosts = Array.from(
       new Map(allPosts.map(post => [post.url, post])).values()
@@ -63,7 +70,7 @@ export async function searchReddit(queries: string[]): Promise<RedditPost[]> {
     
     return uniquePosts
       .sort((a, b) => b.score - a.score)
-      .slice(0, 15);
+      .slice(0, REDDIT_CONFIG.MAX_POSTS);
   } catch (error) {
     console.error('Error searching Reddit:', error);
     return [];

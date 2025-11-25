@@ -13,8 +13,8 @@ export default function NewsArticlesList({ articles }: NewsArticlesListProps) {
         Recent News ({articles.length})
       </h3>
       <div className="space-y-3 max-h-96 overflow-y-auto">
-        {articles.slice(0, 5).map((article, i) => (
-          <div key={i} className="pb-3 border-b border-gray-200 dark:border-gray-700 last:border-0">
+        {articles.slice(0, 5).map((article) => (
+          <div key={article.url} className="pb-3 border-b border-gray-200 dark:border-gray-700 last:border-0">
             <a
               href={article.url}
               target="_blank"

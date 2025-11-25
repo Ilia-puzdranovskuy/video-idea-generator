@@ -13,8 +13,8 @@ export default function RedditPostsList({ posts }: RedditPostsListProps) {
         Reddit Discussions ({posts.length})
       </h3>
       <div className="space-y-3 max-h-96 overflow-y-auto">
-        {posts.slice(0, 5).map((post, i) => (
-          <div key={i} className="pb-3 border-b border-gray-200 dark:border-gray-700 last:border-0">
+        {posts.slice(0, 5).map((post) => (
+          <div key={post.url} className="pb-3 border-b border-gray-200 dark:border-gray-700 last:border-0">
             <a
               href={post.url}
               target="_blank"
