@@ -42,7 +42,7 @@ async function analyzeThumbnailStyle(videos: YouTubeVideo[]): Promise<string> {
             },
             ...thumbnailUrls.map(url => ({
               type: 'image_url' as const,
-              image_url: { url, detail: OPENAI_CONFIG.IMAGE.DETAIL as const },
+              image_url: { url, detail: OPENAI_CONFIG.IMAGE.DETAIL },
             })),
           ],
         },
